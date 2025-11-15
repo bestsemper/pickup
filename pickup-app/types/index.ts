@@ -1,7 +1,8 @@
 export interface PickupEvent {
   id: string;
   title: string;
-  activity: string; // "Basketball", "Ultimate Frisbee", "Soccer", etc.
+  activity: string; // "Sports", "Club", "Entertainment", "Other"
+  subType?: string; // For Sports: "Basketball", "Soccer", etc. For Club: club name, etc.
   location: {
     name: string;
     address: string;
@@ -19,6 +20,8 @@ export interface PickupEvent {
   maxParticipants?: number;
   description?: string;
   status: 'active' | 'expired' | 'cancelled';
+  isPrivate?: boolean; // true if event is friends-only
+  invitedFriends?: string[]; // array of friend user IDs who can see/join this event
 }
 
 export interface User {

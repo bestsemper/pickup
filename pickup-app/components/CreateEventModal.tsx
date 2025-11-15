@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createEvent } from '@/lib/firebase/events';
+import { useAuth } from '@/contexts/AuthContext';
+import { getFriends } from '@/lib/firebase/friends';
+import CloseIcon from './icons/CloseIcon';
+import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -10,69 +14,243 @@ interface CreateEventModalProps {
 }
 
 export default function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalProps) {
+  const { userProfile, currentUser } = useAuth();
+  const userName = userProfile?.displayName || currentUser?.email;
+
   const [formData, setFormData] = useState({
     title: '',
-    activity: 'Basketball',
+    activity: '',
+    subType: '',
     locationName: '',
     locationAddress: '',
-    duration: 60,
+    startTime: new Date().toISOString().slice(0, 16),
+    endTime: new Date(Date.now() + 60 * 60000).toISOString().slice(0, 16),
     maxParticipants: undefined as number | undefined,
     description: '',
+    isPrivate: false,
   });
+  const [friends, setFriends] = useState<any[]>([]);
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const [suggestions, setSuggestions] = useState<Array<{ description: string; placeId: string }>>([]);
+  const predictDebounceRef = useRef<number | null>(null);
+
+  // Load Google Maps Places script and initialize autocomplete on the address input
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    console.log('[CreateEventModal] Google Maps API key:', !!apiKey);
+    if (!apiKey) {
+      console.warn('[CreateEventModal] No Google Maps API key found in NEXT_PUBLIC_GOOGLE_MAPS_API_KEY');
+      return;
+    }
+
+    const windowAny = window as any;
+
+    function initAutocomplete() {
+      console.log('[CreateEventModal] initAutocomplete called');
+      const input = addressInputRef.current;
+      if (!input || !windowAny.google || !windowAny.google.maps || !windowAny.google.maps.places) return;
+
+      const autocomplete = new windowAny.google.maps.places.Autocomplete(input, { types: ['geocode'] });
+      autocomplete.setFields(['formatted_address', 'geometry', 'name']);
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        console.log('[CreateEventModal] place_changed', place);
+        if (!place || !place.geometry) return;
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setCoords({ lat, lng });
+        setFormData((prev) => ({
+          ...prev,
+          locationName: place.name || prev.locationName,
+          locationAddress: place.formatted_address || prev.locationAddress,
+        }));
+      });
+    }
+
+    // If google already loaded, init straight away
+    if ((windowAny).google && (windowAny).google.maps && (windowAny).google.maps.places) {
+      initAutocomplete();
+      return;
+    }
+
+    // Otherwise, dynamically load the script
+    const scriptId = 'google-maps-places-script';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        console.log('[CreateEventModal] Google Maps script loaded');
+        initAutocomplete();
+      };
+      script.onerror = (err) => {
+        console.error('[CreateEventModal] Google Maps script failed to load', err);
+      };
+      document.head.appendChild(script);
+    } else {
+      // If script tag exists but wasn't initialized yet, try to init after a short delay
+      const t = setTimeout(initAutocomplete, 500);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  // Handle ESC key press and clicks outside suggestions
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && suggestions.length > 0) {
+        setSuggestions([]);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (suggestions.length > 0) {
+        const target = e.target as HTMLElement;
+        // Check if click is outside the suggestions dropdown and address input
+        if (!target.closest('.suggestions-dropdown') && !target.closest('.address-input')) {
+          setSuggestions([]);
+        }
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, suggestions]);
+
+  // Load friends when modal opens
+  useEffect(() => {
+    if (!isOpen || !currentUser) {
+      setFriends([]);
+      return;
+    }
+
+    const loadFriends = async () => {
+      try {
+        const friendsList = await getFriends();
+        setFriends(friendsList);
+      } catch (error) {
+        console.error('Error loading friends:', error);
+        setFriends([]);
+      }
+    };
+
+    loadFriends();
+  }, [isOpen, currentUser]);
+
+  const toggleFriendSelection = (friendUid: string) => {
+    setSelectedFriends((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(friendUid)) {
+        updated.delete(friendUid);
+      } else {
+        updated.add(friendUid);
+      }
+      return updated;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // In a real app, you'd get the user ID from authentication
-      const userId = 'temp-user-id'; // TODO: Get from auth context
-      
-      const now = new Date();
-      const endTime = new Date(now.getTime() + formData.duration * 60000);
-      
+      // Require authenticated user
+      if (!currentUser) {
+        alert('You must be signed in to create an event. Please sign in and try again.');
+        setLoading(false);
+        return;
+      }
+      const userId = currentUser.uid;
+
+      const startTimeDate = new Date(formData.startTime);
+      const endTimeDate = new Date(formData.endTime);
+
+      // Validate that end time is after start time
+      if (endTimeDate <= startTimeDate) {
+        alert('End time must be after start time.');
+        setLoading(false);
+        return;
+      }
+
+      // Ensure coordinates were selected via autocomplete
+      if (!coords) {
+        alert('Please select an address from the suggestions so we can get coordinates (lat/lng).');
+        setLoading(false);
+        return;
+      }
+
+      // Calculate duration in minutes
+      const durationMinutes = Math.round((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
+
+      // Prepare invited friends list
+      const selectedFriendIds = Array.from(selectedFriends);
+
       await createEvent({
-        id: '', // Will be set by Firestore
         title: formData.title,
         activity: formData.activity,
         eventName: formData.title,
         type: formData.activity,
-        subType: formData.activity,
+        subType: formData.subType,
         location: {
           name: formData.locationName,
           address: formData.locationAddress,
-          lat: 38.0336, // TODO: Get from geocoding
-          lng: -78.5080,
+          lat: coords.lat,
+          lng: coords.lng,
         },
         createdBy: {
           uid: userId,
-          name: 'Anonymous User', // TODO: Get from user profile
+          name: userName,
         },
-        duration: formData.duration,
-        startTime: now,
-        endTime: endTime,
+        duration: durationMinutes,
+        startTime: startTimeDate,
+        endTime: endTimeDate,
         participants: [userId],
         maxParticipants: formData.maxParticipants,
         description: formData.description,
+        isPrivate: formData.isPrivate,
+        invitedFriends: formData.isPrivate ? selectedFriendIds : undefined,
       });
+
+      // Notify user of success
+      try {
+        alert('Event created successfully!');
+      } catch (e) {
+        // fallback: console log
+        console.log('Event created');
+      }
 
       // Reset form
       setFormData({
         title: '',
-        activity: 'Basketball',
+        activity: '',
+        subType: '',
         locationName: '',
         locationAddress: '',
-        duration: 60,
+        startTime: new Date().toISOString().slice(0, 16),
+        endTime: new Date(Date.now() + 60 * 60000).toISOString().slice(0, 16),
         maxParticipants: undefined,
         description: '',
+        isPrivate: false,
       });
+      setSelectedFriends(new Set());
 
       onEventCreated?.();
       onClose();
     } catch (error) {
       console.error('Error creating event:', error);
-      alert('Failed to create event. Please try again.');
+      const msg = (error as any)?.message || String(error);
+      alert(`Failed to create event: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -81,22 +259,31 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 flex items-center justify-center z-50 p-4" 
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      onClick={onClose}
+    >
+      <div 
+        className="rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar" 
+        style={{ backgroundColor: 'var(--card-bg)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Create Pickup Event</h2>
+            <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>Create Pickup Event</h2>
             <button 
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 text-2xl"
+              className="p-1 hover:opacity-70"
+              style={{ color: 'var(--foreground-secondary)' }}
             >
-              X
+              <CloseIcon />
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Event Title *</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>Event Title *</label>
               <input
                 type="text"
                 required
@@ -108,22 +295,65 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Activity Type *</label>
+              <label className="block text-sm font-medium mb-1">Activity Type*</label>
               <select
                 required
                 value={formData.activity}
-                onChange={(e) => setFormData({ ...formData, activity: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, activity: e.target.value, subType: '' })}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
               >
-                <option>Basketball</option>
-                <option>Soccer</option>
-                <option>Ultimate Frisbee</option>
-                <option>Volleyball</option>
-                <option>Tennis</option>
-                <option>Board Game</option>
-                <option>Other</option>
+                <option value="">Select Activity Type</option>
+                {ACTIVITY_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
               </select>
             </div>
+
+            {/* Conditional subType field based on activity type */}
+            {formData.activity === 'Sports' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Sport Type *</label>
+                <select
+                  required
+                  value={formData.subType}
+                  onChange={(e) => setFormData({ ...formData, subType: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                >
+                  <option value="">Select a sport</option>
+                  {SPORTS_SUBTYPES.map(sport => (
+                    <option key={sport} value={sport}>{sport}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {formData.activity === 'Club' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Club Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.subType}
+                  onChange={(e) => setFormData({ ...formData, subType: e.target.value })}
+                  placeholder="e.g., Chess Club, Anime Club"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                />
+              </div>
+            )}
+
+            {formData.activity === 'Entertainment' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Entertainment Type *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.subType}
+                  onChange={(e) => setFormData({ ...formData, subType: e.target.value })}
+                  placeholder="e.g., Board Games, Karaoke, Movie Night"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Location Name *</label>
@@ -137,31 +367,95 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
               />
             </div>
 
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium mb-1">Address *</label>
               <input
+                ref={addressInputRef}
+                id="address-input"
                 type="text"
+                autoComplete="off"
                 required
                 value={formData.locationAddress}
-                onChange={(e) => setFormData({ ...formData, locationAddress: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none address-input"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFormData({ ...formData, locationAddress: v });
+                  // debounce predictions
+                  if (!window || !(window as any).google || !(window as any).google.maps || !(window as any).google.maps.places) return;
+                  if (predictDebounceRef.current) window.clearTimeout(predictDebounceRef.current);
+                  predictDebounceRef.current = window.setTimeout(() => {
+                    const service = new (window as any).google.maps.places.AutocompleteService();
+                    service.getPlacePredictions({ input: v }, (preds: any[], status: any) => {
+                      if (status !== (window as any).google.maps.places.PlacesServiceStatus.OK || !preds) {
+                        setSuggestions([]);
+                        return;
+                      }
+                      setSuggestions(preds.map(p => ({ description: p.description, placeId: p.place_id })));
+                    });
+                  }, 250);
+                }}
                 placeholder="e.g., 1000 Stadium Rd, Charlottesville, VA"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
               />
+              {/* Suggestions dropdown (fallback if native autocomplete UI not working) */}
+              {suggestions.length > 0 && (
+                <ul className="border rounded bg-white text-black mt-1 max-h-40 overflow-auto suggestions-dropdown" style={{ zIndex: 10001 }}>
+                  {suggestions.map(s => (
+                    <li
+                      key={s.placeId}
+                      className="p-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={() => {
+                        // fetch place details
+                        const ps = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
+                        ps.getDetails({ placeId: s.placeId }, (place: any, status: any) => {
+                          if (status !== (window as any).google.maps.places.PlacesServiceStatus.OK || !place) return;
+                          const lat = place.geometry.location.lat();
+                          const lng = place.geometry.location.lng();
+                          setCoords({ lat, lng });
+                          setFormData(prev => ({
+                            ...prev,
+                            locationName: place.name || prev.locationName,
+                            locationAddress: place.formatted_address || s.description,
+                          }));
+                          setSuggestions([]);
+                        });
+                      }}
+                    >
+                      {s.description}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs mt-1" style={{ color: 'var(--foreground-secondary)' }}>
+                Tip: select an address from the suggestions to automatically fill location coordinates.
+              </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-1">
-                Duration (minutes) *
+                Start Time & End Time *
               </label>
-              <input
-                type="number"
-                required
-                min="15"
-                max="180"
-                value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
-              />
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium mb-1">Start Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.startTime}
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium mb-1">End Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.endTime}
+                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                  />
+                </div>
+              </div>
             </div>
 
             <div>
@@ -180,9 +474,8 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>
                 Description (optional)
               </label>
               <textarea
@@ -190,20 +483,117 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Any additional details..."
                 rows={3}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                className="w-full px-3 py-2 border rounded-lg outline-none"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--input-text)'
+                }}
               />
             </div>
+
+            {/* Private Event Toggle */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isPrivate"
+                checked={formData.isPrivate}
+                onChange={(e) => {
+                  setFormData({ ...formData, isPrivate: e.target.checked });
+                  if (!e.target.checked) {
+                    setSelectedFriends(new Set());
+                  }
+                }}
+                className="w-4 h-4"
+              />
+              <label htmlFor="isPrivate" className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                Private Event (Friends Only)
+              </label>
+            </div>
+
+            {/* Friend Selection */}
+            {formData.isPrivate && (
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--foreground)' }}>
+                  Invite Friends {friends.length === 0 ? '(Add friends first)' : ''}
+                </label>
+                {friends.length === 0 ? (
+                  <p className="text-sm py-4 text-center" style={{ color: 'var(--foreground-secondary)' }}>
+                    No friends to invite. Add friends from your profile menu.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-2 rounded" style={{ backgroundColor: 'var(--background-secondary)' }}>
+                    {friends.map((friend) => (
+                      <div
+                        key={friend.uid}
+                        className="flex items-center gap-2 p-2 rounded"
+                        style={{ backgroundColor: 'var(--card-bg)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          id={`friend-${friend.uid}`}
+                          checked={selectedFriends.has(friend.uid)}
+                          onChange={() => toggleFriendSelection(friend.uid)}
+                          className="w-4 h-4"
+                        />
+                        <label htmlFor={`friend-${friend.uid}`} className="flex-1 flex items-center gap-2 cursor-pointer">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium"
+                            style={{ backgroundColor: 'var(--secondary)' }}
+                          >
+                            {friend.displayName?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                            {friend.displayName}
+                          </span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {formData.isPrivate && (
+              <p className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
+                This event will be visible to all your friends.
+              </p>
+            )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold"
+              className="w-full py-3 text-white rounded-lg font-semibold"
+              style={{ 
+                backgroundColor: loading ? 'var(--foreground-tertiary)' : 'var(--primary)',
+                cursor: loading ? 'not-allowed' : 'pointer'
+              }}
             >
               {loading ? 'Creating...' : 'Create Event'}
             </button>
           </form>
         </div>
       </div>
+          <style jsx>{`
+        input, select, textarea {
+          background-color: var(--input-bg);
+          border: 1px solid var(--input-border);
+          color: var(--input-text);
+        }
+        input:focus, select:focus, textarea:focus {
+          outline: none;
+          border-color: var(--input-focus);
+          ring: 2px var(--input-focus);
+        }
+        label {
+          color: var(--foreground);
+        }
+      `}</style>
+          <style jsx global>{`
+            /* Ensure Google Places suggestions show above the modal */
+            .pac-container {
+              z-index: 10000 !important;
+            }
+          `}</style>
     </div>
   );
 }
