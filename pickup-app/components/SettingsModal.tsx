@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import CloseIcon from './icons/CloseIcon';
 import SunIcon from './icons/SunIcon';
 import MoonIcon from './icons/MoonIcon';
+import Toast from './Toast';
+import { useToast } from '@/hooks/useToast';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }: SettingsModalProps) {
   const { currentUser, userProfile, resetPassword, updateProfile } = useAuth();
+  const { toasts, showToast, removeToast } = useToast();
   const [resetLoading, setResetLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
@@ -23,17 +26,17 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
 
   const handleResetPassword = async () => {
     if (!currentUser?.email) {
-      alert('No email found for current user');
+      showToast('No email found for current user', 'error');
       return;
     }
 
     setResetLoading(true);
     try {
       await resetPassword(currentUser.email);
-      alert('Password reset email sent! Check your inbox.');
+      showToast('Password reset link sent via email', 'success');
     } catch (error) {
       console.error('Reset password error:', error);
-      alert('Failed to send reset email. Please try again.');
+      showToast('Failed to send reset email. Please try again.', 'error');
     } finally {
       setResetLoading(false);
     }
@@ -50,13 +53,13 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
 
     // Validate file is an image
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      showToast('Please select an image file', 'warning');
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
+      showToast('File size must be less than 5MB', 'warning');
       return;
     }
 
@@ -70,7 +73,7 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Error reading file:', error);
-      alert('Failed to upload image');
+      showToast('Failed to upload image', 'error');
     }
   };
 
@@ -81,19 +84,17 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
 
   const handleUpdateProfile = async () => {
     if (!displayName.trim()) {
-      alert('Username cannot be empty');
+      showToast('Username cannot be empty', 'warning');
       return;
     }
 
     setUpdateLoading(true);
     try {
       await updateProfile(displayName.trim(), photoURL.trim() || undefined);
-      alert('Profile updated successfully!');
+      showToast('Profile updated successfully!', 'success');
+      setUpdateLoading(false);
     } catch (error) {
       console.error('Update profile error:', error);
-      alert('Failed to update profile. Please try again.');
-    } finally {
-      setUpdateLoading(false);
     }
   };
 
@@ -122,12 +123,12 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
           </button>
         </div>
 
-        <div className="px-2 pb-4">
+        <div className="px-2">
           <div className="h-px mx-4" style={{ backgroundColor: 'var(--border)' }} />
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-6 pt-3 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
           {/* Profile Section */}
           <div>
             <h3 className="text-lg font-semibold mb-3 text-foreground">
@@ -143,10 +144,7 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
                   type="file"
                   accept="image/*"
                   onChange={handlePhotoUpload}
-                  className="w-full py-2 rounded-lg border border-default bg-background-secondary text-foreground cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-primary file:text-white file:cursor-pointer file:font-medium hover:file:opacity-50"
-                  style={{
-                    color: 'transparent',
-                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-default cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-white file:cursor-pointer file:font-medium hover:file:opacity-80"
                 />
                 <button
                   onClick={handleRemoveProfilePicture}
@@ -192,7 +190,7 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
               <button
                 onClick={handleUpdateProfile}
                 disabled={updateLoading}
-                className="w-full p-4 rounded-lg border border-default hover:opacity-80 bg-background-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-2 rounded-lg border border-default hover:opacity-80 bg-background-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <p className="font-medium text-foreground">
                   {updateLoading ? 'Updating...' : 'Update Profile'}
@@ -245,19 +243,23 @@ export default function SettingsModal({ isOpen, onClose, theme, onThemeToggle }:
               <button
                 onClick={handleResetPassword}
                 disabled={resetLoading}
-                className="w-full p-4 rounded-lg border border-default hover:opacity-80 bg-background-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm rounded-lg border border-default hover:opacity-80 bg-background-secondary disabled:opacity-50 disabled:cursor-not-allowed font-medium text-foreground"
               >
-                <p className="font-medium text-foreground">
-                  {resetLoading ? 'Sending...' : 'Reset Password'}
-                </p>
-                <p className="text-sm mt-1 text-secondary">
-                  Send password reset email
-                </p>
+                {resetLoading ? 'Sending...' : 'Reset Password'}
               </button>
             </div>
           </div>
         </div>
       </div>
+      
+      {toasts.map(toast => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
     </div>
   );
 }

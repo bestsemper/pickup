@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { PickupEvent } from '@/types';
 
 interface MapComponentProps {
@@ -11,19 +11,43 @@ interface MapComponentProps {
   zoom?: number;
 }
 
+export interface MapComponentHandle {
+  zoomToLocation: (lat: number, lng: number, zoomLevel?: number) => void;
+  panToLocation: (lat: number, lng: number) => void;
+  closePopup: () => void;
+}
+
 interface GroupedEvents {
   location: { lat: number; lng: number };
   events: PickupEvent[];
 }
 
-export default function MapComponent({ 
+const MapComponent = forwardRef<MapComponentHandle, MapComponentProps>(({ 
   events, 
   onMarkerClick,
   center = { lat: 38.0336, lng: -78.5080 }, // Default: Charlottesville, VA
   zoom = 13 
-}: MapComponentProps) {
+}, ref) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   const [showingGroup, setShowingGroup] = useState<GroupedEvents | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    zoomToLocation: (lat: number, lng: number, zoomLevel: number = 17) => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo({ lat, lng });
+        mapInstanceRef.current.setZoom(zoomLevel);
+      }
+    },
+    panToLocation: (lat: number, lng: number) => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo({ lat, lng });
+      }
+    },
+    closePopup: () => {
+      setShowingGroup(null);
+    }
+  }));
 
   if (!apiKey) {
     return (
@@ -63,6 +87,12 @@ export default function MapComponent({
   return (
     <APIProvider apiKey={apiKey}>
       <Map
+        onCameraChanged={(event: any) => {
+          // Map reference should be available through event.map
+          if (event.map) {
+            mapInstanceRef.current = event.map;
+          }
+        }}
         defaultCenter={center}
         defaultZoom={zoom}
         mapId="pickup-map"
@@ -101,53 +131,68 @@ export default function MapComponent({
       
       {/* Multi-event selector popup */}
       {showingGroup && showingGroup.events.length > 1 && (
-        <div 
-          className="absolute bottom-4 left-1/2 transform -translate-x-1/2 rounded-lg shadow-lg p-4 max-w-md w-full mx-4"
-          style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)', zIndex: 1000 }}
-        >
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-semibold" style={{ color: 'var(--foreground)' }}>
-              {showingGroup.events.length} events at this location
-            </h3>
-            <button 
-              onClick={() => setShowingGroup(null)}
-              className="hover:opacity-70"
-              style={{ color: 'var(--foreground-secondary)' }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {showingGroup.events.map(event => (
-              <button
-                key={event.id}
-                onClick={() => {
-                  onMarkerClick?.(event);
-                  setShowingGroup(null);
-                }}
-                className="w-full text-left p-3 rounded-lg hover:opacity-80"
-                style={{ backgroundColor: 'var(--background-secondary)', border: '1px solid var(--border)' }}
+        <>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0"
+            style={{ zIndex: 999 }}
+            onClick={() => setShowingGroup(null)}
+          />
+          
+          {/* Popup */}
+          <div 
+            className="absolute bottom-4 left-1/2 transform -translate-x-1/2 rounded-lg shadow-lg p-4 max-w-md w-full mx-4"
+            style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)', zIndex: 1000 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold" style={{ color: 'var(--foreground)' }}>
+                {showingGroup.events.length} events at this location
+              </h3>
+              <button 
+                onClick={() => setShowingGroup(null)}
+                className="hover:opacity-70"
+                style={{ color: 'var(--foreground-secondary)' }}
               >
-                <div className="font-medium" style={{ color: 'var(--foreground)' }}>
-                  {event.title}
-                </div>
-                <div className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
-                  {event.activity} {event.subType && `• ${event.subType}`}
-                </div>
-                <div className="text-xs mt-1" style={{ color: 'var(--foreground-tertiary)' }}>
-                  {event.participants.length} joined
-                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
               </button>
-            ))}
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {showingGroup.events.map(event => (
+                <button
+                  key={event.id}
+                  onClick={() => {
+                    onMarkerClick?.(event);
+                    setShowingGroup(null);
+                  }}
+                  className="w-full text-left p-3 rounded-lg hover:opacity-80"
+                  style={{ backgroundColor: 'var(--background-secondary)', border: '1px solid var(--border)' }}
+                >
+                  <div className="font-medium" style={{ color: 'var(--foreground)' }}>
+                    {event.title}
+                  </div>
+                  <div className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
+                    {event.activity} {event.subType && `• ${event.subType}`}
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: 'var(--foreground-tertiary)' }}>
+                    {event.participants.length} joined
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </APIProvider>
   );
-}
+});
+
+MapComponent.displayName = 'MapComponent';
+
+export default MapComponent;
 
 function getActivityColor(activity: string): string {
   const colors: { [key: string]: string } = {

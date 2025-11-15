@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getActiveEvents, joinEvent, leaveEvent, deleteEvent } from '@/lib/firebase/events';
 import { PickupEvent } from '@/types';
 import Link from 'next/link';
-import MapComponent from '@/components/Map';
+import MapComponent, { type MapComponentHandle } from '@/components/Map';
 import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
@@ -12,16 +12,18 @@ import { db } from '@/lib/firebase/config';
 import CreateEventModal from '@/components/CreateEventModal';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
+import CloseIcon from '@/components/icons/CloseIcon';
 
 export default function MapView() {
   const { currentUser } = useAuth();
+  const mapRef = useRef<MapComponentHandle>(null);
   const [events, setEvents] = useState<PickupEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState<PickupEvent | null>(null);
   const [joiningEvent, setJoiningEvent] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
-  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } }>({});
+  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } }>({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const { toasts, showToast, removeToast } = useToast();
 
@@ -43,7 +45,7 @@ export default function MapView() {
 
   const loadParticipantProfiles = async (participantIds: string[]) => {
     try {
-      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } } = {};
+      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } } = {};
       
       await Promise.all(
         participantIds.map(async (uid) => {
@@ -54,7 +56,8 @@ export default function MapView() {
               profiles[uid] = {
                 displayName: userData.displayName || 'Anonymous',
                 email: userData.email || '',
-                isNetBadgeVerified: userData.isNetBadgeVerified || false
+                isNetBadgeVerified: userData.isNetBadgeVerified || false,
+                photoURL: userData.photoURL || undefined
               };
             }
           }
@@ -159,6 +162,12 @@ export default function MapView() {
     }
   };
 
+  const handleEventClick = (event: PickupEvent) => {
+    setSelectedEvent(event);
+    // Always zoom to the event location when clicked
+    mapRef.current?.zoomToLocation(event.location.lat, event.location.lng, 17);
+  };
+
   return (
     <>
       <div className="flex flex-col overflow-hidden bg-[var(--background)] h-[calc(100vh-73px)]">
@@ -188,13 +197,19 @@ export default function MapView() {
             </span>
             <div className="ml-auto flex items-center gap-3">
               <button
-                onClick={() => currentUser ? setIsCreateModalOpen(true) : showToast('Please sign in to create an event', 'warning')}
+                onClick={() => {
+                  mapRef.current?.closePopup();
+                  currentUser ? setIsCreateModalOpen(true) : showToast('Please sign in to create an event', 'warning');
+                }}
                 className="px-4 py-2 rounded-lg font-medium border border-primary text-primary hover:bg-primary hover:text-white transition"
               >
                 Create Event
               </button>
               <button
-                onClick={() => setSidebarHidden(!sidebarHidden)}
+                onClick={() => {
+                  mapRef.current?.closePopup();
+                  setSidebarHidden(!sidebarHidden);
+                }}
                 className="px-4 py-2 rounded-lg font-medium border border-default text-foreground hover:bg-background-secondary transition"
               >
                 All Events
@@ -213,8 +228,9 @@ export default function MapView() {
             </div>
           ) : (
             <MapComponent 
+              ref={mapRef}
               events={filteredEvents} 
-              onMarkerClick={setSelectedEvent}
+              onMarkerClick={handleEventClick}
             />
           )}
         </div>
@@ -230,9 +246,9 @@ export default function MapView() {
             <div className="p-6">
             <button 
               onClick={() => setSelectedEvent(null)}
-              className="absolute top-4 right-4 text-secondary"
+              className="absolute top-4 right-4 text-secondary hover:opacity-70"
             >
-              X
+              <CloseIcon />
             </button>
             
             <h2 className="text-2xl font-bold mb-2 text-foreground">{selectedEvent.title}</h2>
@@ -270,9 +286,17 @@ export default function MapView() {
                         key={uid} 
                         className="flex items-center gap-2 p-2 rounded bg-background-secondary"
                       >
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium bg-secondary-color">
-                          {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
-                        </div>
+                        {participantProfiles[uid]?.photoURL ? (
+                          <img
+                            src={participantProfiles[uid].photoURL}
+                            alt={participantProfiles[uid]?.displayName}
+                            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0 bg-secondary-color">
+                            {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate text-foreground flex items-center gap-1">
                             <span>{participantProfiles[uid]?.displayName || 'Loading...'}</span>
@@ -343,7 +367,7 @@ export default function MapView() {
                   {filteredEvents.map((event) => (
                     <button
                       key={event.id}
-                      onClick={() => setSelectedEvent(event)}
+                      onClick={() => handleEventClick(event)}
                       className="w-full text-left p-3 rounded-lg transition hover:opacity-80 bg-background-secondary border border-default"
                     >
                       <div className="flex justify-between items-start mb-2">
@@ -375,6 +399,7 @@ export default function MapView() {
     <CreateEventModal
       isOpen={isCreateModalOpen}
       onClose={() => setIsCreateModalOpen(false)}
+      onEventCreated={loadEvents}
     />
 
     {toasts.map(toast => (

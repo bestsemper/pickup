@@ -13,6 +13,8 @@ import {
 } from '@/lib/firebase/friends';
 import CloseIcon from './icons/CloseIcon';
 import UserIcon from './icons/UserIcon';
+import Toast from './Toast';
+import { useToast } from '@/hooks/useToast';
 
 interface FriendsModalProps {
   isOpen: boolean;
@@ -21,6 +23,7 @@ interface FriendsModalProps {
 
 export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
   const { currentUser } = useAuth();
+  const { toasts, showToast, removeToast } = useToast();
   const [friends, setFriends] = useState<any[]>([]);
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,12 +60,12 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
       setAddingFriend(true);
       
       await sendFriendRequest(addFriendEmail.trim().toLowerCase());
-      alert('Friend request sent!');
+      showToast('Friend request sent!', 'success');
       setAddFriendEmail('');
       await loadFriendsData();
     } catch (error: any) {
       console.error('Error adding friend:', error);
-      alert(error.message || 'Failed to send friend request');
+      showToast(error.message || 'Failed to send friend request', 'error');
     } finally {
       setAddingFriend(false);
     }
@@ -74,7 +77,7 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
       await loadFriendsData();
     } catch (error) {
       console.error('Error accepting friend request:', error);
-      alert('Failed to accept friend request');
+      showToast('Failed to accept friend request', 'error');
     }
   };
 
@@ -84,7 +87,7 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
       await loadFriendsData();
     } catch (error) {
       console.error('Error rejecting friend request:', error);
-      alert('Failed to reject friend request');
+      showToast('Failed to reject friend request', 'error');
     }
   };
 
@@ -96,7 +99,7 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
       await loadFriendsData();
     } catch (error) {
       console.error('Error removing friend:', error);
-      alert('Failed to remove friend');
+      showToast('Failed to remove friend', 'error');
     }
   };
 
@@ -278,6 +281,14 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
           )}
         </div>
       </div>
-    </div>
+          {toasts.map(toast => (
+            <Toast
+              key={toast.id}
+              message={toast.message}
+              type={toast.type}
+              onClose={() => removeToast(toast.id)}
+            />
+          ))}
+        </div>
   );
 }

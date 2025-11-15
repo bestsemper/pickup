@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase/config';
 import { PickupEvent } from '@/types';
+import { checkFriendship } from './friends';
 
 const EVENTS_COLLECTION = 'events';
 
@@ -78,8 +79,13 @@ export async function createEvent(eventData: Omit<PickupEvent, 'id' | 'createdAt
 }
 
 // Get all active events (not expired)
+// Private events are only visible to:
+// 1. The event creator
+// 2. Event participants
+// 3. Friends of the creator
 export async function getActiveEvents() {
   const now = Timestamp.now();
+  const currentUser = auth.currentUser;
   
   const q = query(
     collection(db, EVENTS_COLLECTION),
@@ -89,7 +95,7 @@ export async function getActiveEvents() {
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => {
+  const allEvents = querySnapshot.docs.map(doc => {
     const data = doc.data();
     return {
       id: doc.id,
@@ -99,6 +105,49 @@ export async function getActiveEvents() {
       expiresAt: data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt),
     } as PickupEvent;
   });
+
+  // If no user is logged in, only show public events
+  if (!currentUser) {
+    return allEvents.filter(event => !event.isPrivate);
+  }
+
+  // Filter private events based on visibility rules
+  const visibleEvents = await Promise.all(
+    allEvents.map(async (event) => {
+      // Public events are always visible
+      if (!event.isPrivate) {
+        return event;
+      }
+
+      // Private events: check if user has access
+      // Support both old format (creatorId) and new format (createdBy.uid)
+      const creatorId = (event as any).creatorId || event.createdBy?.uid;
+      if (!creatorId) {
+        // If no creator info, hide the event
+        return null;
+      }
+
+      const isCreator = creatorId === currentUser.uid;
+      const isParticipant = event.participants?.includes(currentUser.uid);
+      
+      // If user is creator or participant, they can see it
+      if (isCreator || isParticipant) {
+        return event;
+      }
+
+      // Check if user is friends with the creator
+      try {
+        const isFriend = await checkFriendship(currentUser.uid, creatorId);
+        return isFriend ? event : null;
+      } catch (error) {
+        console.error('Error checking friendship:', error);
+        return null;
+      }
+    })
+  );
+
+  // Filter out null values (private events user can't see)
+  return visibleEvents.filter(event => event !== null) as PickupEvent[];
 }
 
 // Join an event

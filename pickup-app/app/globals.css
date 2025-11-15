@@ -347,3 +347,24 @@ button:disabled {
 .animate-slide-in-fade-out {
   animation: slide-in-fade-out 3s ease-in-out forwards;
 }
+
+/* File input styling for light and dark modes */
+input[type="file"] {
+  color-scheme: light dark;
+}
+
+input[type="file"]::file-selector-button {
+  color: #ffffff !important;
+  background-color: var(--primary) !important;
+}
+
+/* Light mode overrides */
+@media (prefers-color-scheme: light) {
+  input[type="file"]::file-selector-button {
+    color: #000000 !important;
+  }
+}
+
+:root[style*="color-scheme: light"] input[type="file"]::file-selector-button {
+  color: #000000 !important;
+}

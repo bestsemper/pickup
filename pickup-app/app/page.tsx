@@ -26,7 +26,7 @@ export default function Home() {
         <div className="text-center max-w-2xl">
           <h1 className="text-6xl font-bold mb-4 text-primary">Pickup</h1>
           <p className="text-2xl mb-8 text-secondary">
-            Find spontaneous games and activities happening around you today!
+            Find spontaneous activities and events happening around you today!
           </p>
           
           <button

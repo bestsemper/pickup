@@ -20,7 +20,7 @@ export default function ListView() {
   const [filter, setFilter] = useState('all');
   const [joiningEvents, setJoiningEvents] = useState<Set<string>>(new Set());
   const [selectedEvent, setSelectedEvent] = useState<PickupEvent | null>(null);
-  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } }>({});
+  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } }>({});
   const [joiningEvent, setJoiningEvent] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -36,7 +36,7 @@ export default function ListView() {
 
   const loadParticipantProfiles = async (participantIds: string[]) => {
     try {
-      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } } = {};
+      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } } = {};
       
       await Promise.all(
         participantIds.map(async (uid) => {
@@ -47,7 +47,8 @@ export default function ListView() {
               profiles[uid] = {
                 displayName: userData.displayName || 'Anonymous',
                 email: userData.email || '',
-                isNetBadgeVerified: userData.isNetBadgeVerified || false
+                isNetBadgeVerified: userData.isNetBadgeVerified || false,
+                photoURL: userData.photoURL || undefined
               };
             }
           }
@@ -335,12 +336,20 @@ export default function ListView() {
                           className="flex items-center gap-2 p-2 rounded"
                           style={{ backgroundColor: 'var(--background-secondary)' }}
                         >
-                          <div 
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium"
-                            style={{ backgroundColor: 'var(--secondary)' }}
-                          >
-                            {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
-                          </div>
+                          {participantProfiles[uid]?.photoURL ? (
+                            <img
+                              src={participantProfiles[uid].photoURL}
+                              alt={participantProfiles[uid]?.displayName}
+                              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                            />
+                          ) : (
+                            <div 
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0"
+                              style={{ backgroundColor: 'var(--secondary)' }}
+                            >
+                              {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate flex items-center gap-1" style={{ color: 'var(--foreground)' }}>
                               <span>{participantProfiles[uid]?.displayName || 'Loading...'}</span>
@@ -422,6 +431,7 @@ export default function ListView() {
     <CreateEventModal
       isOpen={isCreateModalOpen}
       onClose={() => setIsCreateModalOpen(false)}
+      onEventCreated={loadEvents}
     />
 
     {toasts.map(toast => (

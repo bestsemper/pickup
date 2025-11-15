@@ -5,6 +5,8 @@ import { createEvent } from '@/lib/firebase/events';
 import { useAuth } from '@/contexts/AuthContext';
 import CloseIcon from './icons/CloseIcon';
 import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
+import Toast from './Toast';
+import { useToast } from '@/hooks/useToast';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -12,9 +14,32 @@ interface CreateEventModalProps {
   onEventCreated?: () => void;
 }
 
+// Calculate default start and end times
+function getDefaultTimes() {
+  const now = new Date();
+  const startTime = new Date(now);
+  
+  const endTime = new Date(now);
+  endTime.setHours(now.getHours() + 2); // 2 hours later
+  
+  const formatTime = (date: Date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${mins}`;
+  };
+  
+  return {
+    startTime: formatTime(startTime),
+    endTime: formatTime(endTime),
+  };
+}
+
 export default function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalProps) {
   const { userProfile, currentUser } = useAuth();
   const userName = userProfile?.displayName || currentUser?.email;
+  const { toasts, showToast, removeToast } = useToast();
+
+  const defaultTimes = getDefaultTimes();
 
   const [formData, setFormData] = useState({
     title: '',
@@ -23,8 +48,8 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
     locationName: '',
     locationAddress: '',
     eventDate: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
-    startTimeOnly: '14:00', // HH:mm format
-    endTimeOnly: '15:00', // HH:mm format
+    startTimeOnly: defaultTimes.startTime, // Next 30-min slot
+    endTimeOnly: defaultTimes.endTime, // 1 hour later
     maxParticipants: undefined as number | undefined,
     description: '',
     isPrivate: false,
@@ -34,6 +59,27 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const [suggestions, setSuggestions] = useState<Array<{ description: string; placeId: string }>>([]);
   const predictDebounceRef = useRef<number | null>(null);
+
+  // Update default times every minute
+  useEffect(() => {
+    const updateTimes = () => {
+      const times = getDefaultTimes();
+      setFormData((prev) => ({
+        ...prev,
+        startTimeOnly: times.startTime,
+        endTimeOnly: times.endTime,
+      }));
+    };
+
+    // Update immediately when modal opens
+    if (isOpen) {
+      updateTimes();
+    }
+
+    // Update every minute
+    const interval = setInterval(updateTimes, 60000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   // Load Google Maps Places script and initialize autocomplete on the address input
   useEffect(() => {
@@ -135,7 +181,7 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
     try {
       // Require authenticated user
       if (!currentUser) {
-        alert('You must be signed in to create an event. Please sign in and try again.');
+        showToast('You must be signed in to create an event. Please sign in and try again.', 'warning');
         setLoading(false);
         return;
       }
@@ -146,14 +192,14 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
 
       // Validate that end time is after start time
       if (endTimeDate <= startTimeDate) {
-        alert('End time must be after start time.');
+        showToast('End time must be after start time.', 'warning');
         setLoading(false);
         return;
       }
 
       // Ensure coordinates were selected via autocomplete
       if (!coords) {
-        alert('Please select an address from the suggestions so we can get coordinates (lat/lng).');
+        showToast('Please select an address from the suggestions so we can get coordinates (lat/lng).', 'warning');
         setLoading(false);
         return;
       }
@@ -188,7 +234,7 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
 
       // Notify user of success
       try {
-        alert('Event created successfully!');
+        showToast('Event created successfully!', 'success');
       } catch (e) {
         // fallback: console log
         console.log('Event created');
@@ -214,7 +260,7 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
     } catch (error) {
       console.error('Error creating event:', error);
       const msg = (error as any)?.message || String(error);
-      alert(`Failed to create event: ${msg}`);
+      showToast(`Failed to create event: ${msg}`, 'error');
     } finally {
       setLoading(false);
     }

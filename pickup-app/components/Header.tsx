@@ -8,10 +8,13 @@ import SettingsModal from './SettingsModal';
 import UserIcon from './icons/UserIcon';
 import SunIcon from './icons/SunIcon';
 import MoonIcon from './icons/MoonIcon';
+import Toast from './Toast';
+import { useToast } from '@/hooks/useToast';
 import Link from 'next/link';
 
 export default function Header() {
   const { currentUser, userProfile, signOut, resetPassword } = useAuth();
+  const { toasts, showToast, removeToast } = useToast();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
@@ -63,11 +66,11 @@ export default function Header() {
     
     try {
       await resetPassword(currentUser.email);
-      alert('Password reset email sent! Check your inbox.');
+      showToast('Password reset email sent! Check your inbox.', 'success');
       setIsUserMenuOpen(false);
     } catch (error) {
       console.error('Error sending password reset email:', error);
-      alert('Failed to send password reset email. Please try again.');
+      showToast('Failed to send password reset email. Please try again.', 'error');
     }
   };
 
@@ -108,7 +111,7 @@ export default function Header() {
                   </button>
                   
                   {isUserMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg py-1 z-50 bg-card border border-default">
+                    <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg py-2 z-50 bg-card border border-default">
                       <button
                         onClick={() => {
                           setIsFriendsModalOpen(true);
@@ -194,6 +197,15 @@ export default function Header() {
         theme={theme}
         onThemeToggle={toggleTheme}
       />
+      
+      {toasts.map(toast => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
     </>
   );
 }
