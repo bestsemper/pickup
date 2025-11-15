@@ -55,19 +55,8 @@ export default function FriendsModal({ isOpen, onClose }: FriendsModalProps) {
 
     try {
       setAddingFriend(true);
-      const user = await findUserByEmail(addFriendEmail.trim().toLowerCase());
       
-      if (!user) {
-        alert('User not found with that email');
-        return;
-      }
-
-      if (user.uid === currentUser?.uid) {
-        alert("You can't add yourself as a friend");
-        return;
-      }
-
-      await sendFriendRequest(user.uid, (user as any).email);
+      await sendFriendRequest(addFriendEmail.trim().toLowerCase());
       alert('Friend request sent!');
       setAddFriendEmail('');
       await loadFriendsData();

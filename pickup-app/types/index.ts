@@ -14,7 +14,8 @@ export interface PickupEvent {
     name: string;
   };
   createdAt: Date;
-  expiresAt: Date; // Auto-delete after this time
+  startTime?: Date; // When the event actually starts
+  expiresAt: Date; // When the event actually ends
   duration: number; // in minutes (default 60)
   participants: string[]; // array of user IDs who joined
   maxParticipants?: number;
@@ -30,6 +31,8 @@ export interface User {
   displayName: string;
   photoURL?: string;
   createdAt: Date;
+  isNetBadgeVerified?: boolean; // true if user authenticated via UVA NetBadge
+  computingId?: string; // UVA Computing ID (e.g., abc1de)
 }
 
 export interface Club {

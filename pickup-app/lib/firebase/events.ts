@@ -95,6 +95,7 @@ export async function getActiveEvents() {
       id: doc.id,
       ...data,
       createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
+      startTime: data.startTime?.toDate ? data.startTime.toDate() : (data.startTime ? new Date(data.startTime) : undefined),
       expiresAt: data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt),
     } as PickupEvent;
   });
@@ -132,31 +133,9 @@ export async function getEventById(eventId: string) {
       id: docSnap.id,
       ...data,
       createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
+      startTime: data.startTime?.toDate ? data.startTime.toDate() : (data.startTime ? new Date(data.startTime) : undefined),
       expiresAt: data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt),
     } as PickupEvent;
   }
   return null;
-}
-
-// Get past events (expired)
-export async function getPastEvents() {
-  const now = Timestamp.now();
-  const q = query(
-    collection(db, EVENTS_COLLECTION),
-    where('expiresAt', '<', now),
-    orderBy('expiresAt', 'desc')
-  );
-  
-  const snapshot = await getDocs(q);
-  const events = snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-      expiresAt: data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt),
-    } as PickupEvent;
-  });
-  
-  return events;
 }

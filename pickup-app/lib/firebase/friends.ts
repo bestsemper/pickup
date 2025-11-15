@@ -19,12 +19,41 @@ import { db, auth } from '@/lib/firebase/config';
 const FRIENDS_COLLECTION = 'friends';
 const FRIEND_REQUESTS_COLLECTION = 'friendRequests';
 
-// Send a friend request
-export async function sendFriendRequest(toUserId: string, toUserEmail: string) {
+// Find user by email
+export async function findUserByEmail(email: string) {
+  const q = query(
+    collection(db, 'users'),
+    where('email', '==', email.toLowerCase())
+  );
+  
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) {
+    return null;
+  }
+  
+  return { uid: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+}
+
+// Send a friend request by email
+export async function sendFriendRequestByEmail(toUserEmail: string) {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new Error('User must be logged in to send friend requests');
   }
+
+  const normalizedEmail = toUserEmail.toLowerCase();
+
+  if (normalizedEmail === currentUser.email?.toLowerCase()) {
+    throw new Error("You can't send a friend request to yourself");
+  }
+
+  // Find the user by email
+  const targetUser = await findUserByEmail(normalizedEmail);
+  if (!targetUser) {
+    throw new Error(`User with email ${toUserEmail} not found`);
+  }
+
+  const toUserId = targetUser.uid;
 
   // Check if already friends
   const existingFriendship = await checkFriendship(currentUser.uid, toUserId);
@@ -38,7 +67,7 @@ export async function sendFriendRequest(toUserId: string, toUserEmail: string) {
   );
   
   if (existingRequest.exists()) {
-    throw new Error('Friend request already sent');
+    throw new Error('Friend request already sent to this user');
   }
 
   // Check for reverse request (they sent you a request)
@@ -62,7 +91,70 @@ export async function sendFriendRequest(toUserId: string, toUserEmail: string) {
     fromUserEmail: currentUser.email,
     fromUserName: userData?.displayName || currentUser.email,
     toUserId,
-    toUserEmail,
+    toUserEmail: normalizedEmail,
+    status: 'pending',
+    createdAt: Timestamp.now()
+  });
+}
+
+// Send a friend request (by email)
+export async function sendFriendRequest(toUserEmail: string) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('User must be logged in to send friend requests');
+  }
+
+  const normalizedEmail = toUserEmail.toLowerCase();
+
+  if (normalizedEmail === currentUser.email?.toLowerCase()) {
+    throw new Error("You can't send a friend request to yourself");
+  }
+
+  // Find the user by email
+  const targetUser = await findUserByEmail(normalizedEmail);
+  if (!targetUser) {
+    throw new Error(`User with email ${toUserEmail} not found`);
+  }
+
+  const toUserId = targetUser.uid;
+
+  // Check if already friends
+  const existingFriendship = await checkFriendship(currentUser.uid, toUserId);
+  if (existingFriendship) {
+    throw new Error('Already friends with this user');
+  }
+
+  // Check if request already exists
+  const existingRequest = await getDoc(
+    doc(db, FRIEND_REQUESTS_COLLECTION, `${currentUser.uid}_${toUserId}`)
+  );
+  
+  if (existingRequest.exists()) {
+    throw new Error('Friend request already sent to this user');
+  }
+
+  // Check for reverse request (they sent you a request)
+  const reverseRequest = await getDoc(
+    doc(db, FRIEND_REQUESTS_COLLECTION, `${toUserId}_${currentUser.uid}`)
+  );
+
+  if (reverseRequest.exists()) {
+    // Auto-accept if they already sent you a request
+    await acceptFriendRequest(toUserId);
+    return;
+  }
+
+  // Get current user profile
+  const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+  const userData = userDoc.data();
+
+  // Create friend request
+  await addDoc(collection(db, FRIEND_REQUESTS_COLLECTION), {
+    fromUserId: currentUser.uid,
+    fromUserEmail: currentUser.email,
+    fromUserName: userData?.displayName || currentUser.email,
+    toUserId,
+    toUserEmail: normalizedEmail,
     status: 'pending',
     createdAt: Timestamp.now()
   });
@@ -271,24 +363,4 @@ export async function checkFriendship(userId1: string, userId2: string): Promise
   ]);
 
   return !snapshot1.empty || !snapshot2.empty;
-}
-
-// Find user by email
-export async function findUserByEmail(email: string) {
-  const usersQuery = query(
-    collection(db, 'users'),
-    where('email', '==', email)
-  );
-
-  const snapshot = await getDocs(usersQuery);
-  
-  if (snapshot.empty) {
-    return null;
-  }
-
-  const userDoc = snapshot.docs[0];
-  return {
-    uid: userDoc.id,
-    ...userDoc.data()
-  };
 }

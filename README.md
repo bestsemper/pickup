@@ -20,6 +20,7 @@ An extremely simple, "one-hour-only" event app where:
 - **Real-time Updates**: See active events happening right now
 - **Ephemeral Events**: Posts automatically expire after set duration
 - **Firebase Backend**: Firestore for data, Authentication for users
+- **NetBadge Authentication**: UVA students can sign in with NetBadge and receive a verification badge
 - **Responsive Design**: Works on mobile and desktop
 
 ## Tech Stack

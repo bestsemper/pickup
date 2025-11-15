@@ -9,6 +9,9 @@ import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import CreateEventModal from '@/components/CreateEventModal';
+import Toast from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 
 export default function MapView() {
   const { currentUser } = useAuth();
@@ -18,7 +21,9 @@ export default function MapView() {
   const [selectedEvent, setSelectedEvent] = useState<PickupEvent | null>(null);
   const [joiningEvent, setJoiningEvent] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
-  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string } }>({});
+  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } }>({});
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const { toasts, showToast, removeToast } = useToast();
 
   useEffect(() => {
     // Hide sidebar by default on mobile devices
@@ -38,7 +43,7 @@ export default function MapView() {
 
   const loadParticipantProfiles = async (participantIds: string[]) => {
     try {
-      const profiles: { [key: string]: { displayName: string; email: string } } = {};
+      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } } = {};
       
       await Promise.all(
         participantIds.map(async (uid) => {
@@ -48,7 +53,8 @@ export default function MapView() {
               const userData = userDoc.data();
               profiles[uid] = {
                 displayName: userData.displayName || 'Anonymous',
-                email: userData.email || ''
+                email: userData.email || '',
+                isNetBadgeVerified: userData.isNetBadgeVerified || false
               };
             }
           }
@@ -95,7 +101,7 @@ export default function MapView() {
 
   const handleJoinLeave = async (event: PickupEvent) => {
     if (!currentUser) {
-      alert('Please log in to join events');
+      showToast('Please log in to join events', 'warning');
       return;
     }
 
@@ -108,7 +114,7 @@ export default function MapView() {
       } else {
         // Check if event is full
         if (event.maxParticipants && event.participants.length >= event.maxParticipants) {
-          alert('This event is full');
+          showToast('This event is full', 'warning');
           setJoiningEvent(false);
           return;
         }
@@ -128,7 +134,7 @@ export default function MapView() {
       }
     } catch (error) {
       console.error('Error joining/leaving event:', error);
-      alert('Failed to join/leave event. Please try again.');
+      showToast('Failed to join/leave event. Please try again.', 'error');
     } finally {
       setJoiningEvent(false);
     }
@@ -146,53 +152,63 @@ export default function MapView() {
       setEvents(activeEvents);
       // Close the selected event
       setSelectedEvent(null);
-      alert('Event deleted successfully');
+      showToast('Event deleted successfully', 'success');
     } catch (error) {
       console.error('Error deleting event:', error);
-      alert('Failed to delete event. Please try again.');
+      showToast('Failed to delete event. Please try again.', 'error');
     }
   };
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--background)', height: 'calc(100vh - 73px)' }}>
-      {/* Filter */}
-      <div className="px-4 py-3 flex-shrink-0" style={{ backgroundColor: 'var(--header-bg)', borderBottom: `1px solid var(--border)` }}>
-        <div className="max-w-7xl mx-auto flex items-center gap-4">
-          <label className="font-medium" style={{ color: 'var(--foreground)' }}>Filter:</label>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border"
-            style={{
-              backgroundColor: 'var(--input-bg)',
-              borderColor: 'var(--input-border)',
-              color: 'var(--input-text)'
-            }}
-          >
-            <option value="all">All Events</option>
-            <optgroup label="Activity Types">
-              {ACTIVITY_TYPES.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Sports">
-              {SPORTS_SUBTYPES.map(sport => (
-                <option key={sport} value={sport}>{sport}</option>
-              ))}
-            </optgroup>
-          </select>
-          <span className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
-            {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
-          </span>
+    <>
+      <div className="flex flex-col overflow-hidden bg-[var(--background)] h-[calc(100vh-73px)]">
+        {/* Filter */}
+        <div className="w-full px-8 py-3 flex-shrink-0 bg-header border-b border-default">
+          <div className="mx-auto flex items-center gap-4">
+            <label className="font-medium text-foreground">Filter:</label>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="px-4 py-2 rounded-lg border bg-input border-input text-input"
+            >
+              <option value="all">All Events</option>
+              <optgroup label="Activity Types">
+                {ACTIVITY_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Sports">
+                {SPORTS_SUBTYPES.map(sport => (
+                  <option key={sport} value={sport}>{sport}</option>
+                ))}
+              </optgroup>
+            </select>
+            <span className="text-sm text-secondary">
+              {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={() => currentUser ? setIsCreateModalOpen(true) : showToast('Please sign in to create an event', 'warning')}
+                className="px-4 py-2 rounded-lg font-medium border border-primary text-primary hover:bg-primary hover:text-white transition"
+              >
+                Create Event
+              </button>
+              <button
+                onClick={() => setSidebarHidden(!sidebarHidden)}
+                className="px-4 py-2 rounded-lg font-medium border border-default text-foreground hover:bg-background-secondary transition"
+              >
+                All Events
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
 
       {/* Map Container with Sidebars */}
-      <div className="flex-1 relative flex overflow-hidden">
+      <div className="flex-1 relative overflow-hidden">
         {/* Map */}
-        <div className="flex-1 relative">
+        <div className="absolute inset-0">
           {loading ? (
-            <div className="h-full flex items-center justify-center" style={{ color: 'var(--foreground)' }}>
+            <div className="h-full flex items-center justify-center text-foreground">
               Loading events...
             </div>
           ) : (
@@ -203,79 +219,65 @@ export default function MapView() {
           )}
         </div>
 
-        {/* Toggle Button for Sidebar */}
-        {!selectedEvent && (
-          <button
-            onClick={() => setSidebarHidden(!sidebarHidden)}
-            className="absolute right-2 top-2 z-10 px-3 py-2 rounded-lg shadow-md font-medium text-sm transition-all"
-            style={{ 
-              backgroundColor: 'var(--card-bg)',
-              color: 'var(--foreground)',
-              border: '1px solid var(--border)'
-            }}
-          >
-            {sidebarHidden ? 'Show Events' : 'Hide Events'}
-          </button>
-        )}
-
         {/* Right Sidebar - Event Details or Event List */}
-        {!sidebarHidden && (
-          <div className="w-80 shadow-lg overflow-y-auto custom-scrollbar flex-shrink-0" style={{ backgroundColor: 'var(--card-bg)', borderLeft: `1px solid var(--border)` }}>
-            {selectedEvent ? (
+        <div 
+          className="absolute top-0 right-0 h-full w-80 shadow-lg overflow-y-auto custom-scrollbar bg-card border-l border-default transition-transform duration-300 ease-in-out"
+          style={{
+            transform: sidebarHidden ? 'translateX(100%)' : 'translateX(0)'
+          }}
+        >
+          {selectedEvent ? (
             <div className="p-6">
             <button 
               onClick={() => setSelectedEvent(null)}
-              className="absolute top-4 right-4"
-              style={{ color: 'var(--foreground-secondary)' }}
+              className="absolute top-4 right-4 text-secondary"
             >
               X
             </button>
             
-            <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--foreground)' }}>{selectedEvent.title}</h2>
-            <p className="font-medium mb-4" style={{ color: 'var(--accent-orange)' }}>
+            <h2 className="text-2xl font-bold mb-2 text-foreground">{selectedEvent.title}</h2>
+            <p className="font-medium mb-4 text-accent-orange">
               {getTimeRemaining(selectedEvent.expiresAt)}
             </p>
             
             <div className="space-y-3">
               <div>
-                <p className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>Activity</p>
-                <p className="font-medium" style={{ color: 'var(--foreground)' }}>{selectedEvent.activity}</p>
+                <p className="text-sm text-tertiary">Activity</p>
+                <p className="font-medium text-foreground">
+                  {selectedEvent.subType ? selectedEvent.subType : selectedEvent.activity}
+                </p>
               </div>
               
               <div>
-                <p className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>Location</p>
-                <p className="font-medium" style={{ color: 'var(--foreground)' }}>{selectedEvent.location.name}</p>
-                <p className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>{selectedEvent.location.address}</p>
+                <p className="text-sm text-tertiary">Location</p>
+                <p className="font-medium text-foreground">{selectedEvent.location.name}</p>
+                <p className="text-sm text-secondary">{selectedEvent.location.address}</p>
               </div>
               
               <div>
-                <p className="text-sm mb-2" style={{ color: 'var(--foreground-tertiary)' }}>
+                <p className="text-sm mb-2 text-tertiary">
                   Participants ({selectedEvent.participants.length}
                   {selectedEvent.maxParticipants && ` / ${selectedEvent.maxParticipants}`})
                 </p>
                 <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
                   {selectedEvent.participants.length === 0 ? (
-                    <p className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
+                    <p className="text-sm text-secondary">
                       No participants yet
                     </p>
                   ) : (
                     selectedEvent.participants.map((uid) => (
                       <div 
                         key={uid} 
-                        className="flex items-center gap-2 p-2 rounded"
-                        style={{ backgroundColor: 'var(--background-secondary)' }}
+                        className="flex items-center gap-2 p-2 rounded bg-background-secondary"
                       >
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium"
-                          style={{ backgroundColor: 'var(--secondary)' }}
-                        >
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium bg-secondary-color">
                           {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: 'var(--foreground)' }}>
-                            {participantProfiles[uid]?.displayName || 'Loading...'}
+                          <p className="text-sm font-medium truncate text-foreground flex items-center gap-1">
+                            <span>{participantProfiles[uid]?.displayName || 'Loading...'}</span>
                             {uid === selectedEvent.createdBy.uid && (
-                              <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--accent-orange)', color: 'white' }}>
+                              <span className="ml-1 text-xs px-2 py-0.5 rounded bg-[var(--accent-orange)] text-white">
                                 Host
                               </span>
                             )}
@@ -289,8 +291,8 @@ export default function MapView() {
               
               {selectedEvent.description && (
                 <div>
-                  <p className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>Description</p>
-                  <p style={{ color: 'var(--foreground-secondary)' }}>{selectedEvent.description}</p>
+                  <p className="text-sm text-tertiary">Description</p>
+                  <p className="text-secondary">{selectedEvent.description}</p>
                 </div>
               )}
             </div>
@@ -300,12 +302,9 @@ export default function MapView() {
                 <button 
                   onClick={() => handleJoinLeave(selectedEvent)}
                   disabled={joiningEvent}
-                  className="w-full px-4 py-3 text-white rounded-lg font-semibold" 
-                  style={{ 
-                    backgroundColor: selectedEvent.participants.includes(currentUser.uid) ? 'var(--error)' : 'var(--secondary)',
-                    opacity: joiningEvent ? 0.5 : 1,
-                    cursor: joiningEvent ? 'not-allowed' : 'pointer'
-                  }}
+                  className={`w-full px-8 py-3 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed ${
+                    selectedEvent.participants.includes(currentUser.uid) ? 'bg-error' : 'bg-secondary-color'
+                  }`}
                 >
                   {joiningEvent 
                     ? 'Please wait...' 
@@ -317,11 +316,7 @@ export default function MapView() {
                 {selectedEvent.createdBy.uid === currentUser.uid && (
                   <button
                     onClick={() => handleDeleteEvent(selectedEvent.id)}
-                    className="w-full px-4 py-2 rounded-lg font-medium"
-                    style={{
-                      color: 'var(--error)',
-                      border: '1px solid var(--error)'
-                    }}
+                    className="w-full px-4 py-2 rounded-lg font-medium text-error border border-[var(--error)]"
                   >
                     Delete Event
                   </button>
@@ -329,44 +324,43 @@ export default function MapView() {
               </div>
             )}
             {!currentUser && (
-              <p className="w-full mt-6 text-center" style={{ color: 'var(--foreground-secondary)' }}>
+              <p className="w-full mt-6 text-center text-secondary">
                 Log in to join events
               </p>
             )}
             </div>
           ) : (
             <div className="p-4">
-              <h3 className="font-semibold mb-3" style={{ color: 'var(--foreground)' }}>
+              <h3 className="font-semibold mb-3 text-foreground">
                 Active Events ({filteredEvents.length})
               </h3>
               {loading ? (
-                <p style={{ color: 'var(--foreground-secondary)' }}>Loading...</p>
+                <p className="text-secondary">Loading...</p>
               ) : filteredEvents.length === 0 ? (
-                <p style={{ color: 'var(--foreground-secondary)' }}>No active events</p>
+                <p className="text-secondary">No active events</p>
               ) : (
                 <div className="space-y-2">
                   {filteredEvents.map((event) => (
                     <button
                       key={event.id}
                       onClick={() => setSelectedEvent(event)}
-                      className="w-full text-left p-3 rounded-lg transition hover:opacity-80"
-                      style={{ backgroundColor: 'var(--background-secondary)', border: '1px solid var(--border)' }}
+                      className="w-full text-left p-3 rounded-lg transition hover:opacity-80 bg-background-secondary border border-default"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <p className="font-medium" style={{ color: 'var(--foreground)' }}>{event.title}</p>
-                        <span className="text-xs" style={{ color: 'var(--accent-orange)' }}>
+                        <p className="font-medium text-foreground">{event.title}</p>
+                        <span className="text-xs text-accent-orange">
                           {getTimeRemaining(event.expiresAt)}
                         </span>
                       </div>
-                      <p className="text-sm mb-1" style={{ color: 'var(--foreground-secondary)' }}>
+                      <p className="text-sm mb-1 text-secondary">
                         {event.activity} {event.subType && `• ${event.subType}`}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--foreground-tertiary)' }}>
+                      <p className="text-xs text-tertiary">
                         {event.location.name}
                       </p>
-                      <p className="text-xs mt-2" style={{ color: 'var(--foreground-secondary)' }}>
-                        {event.participants.length} joined
-                        {event.maxParticipants && ` / ${event.maxParticipants}`}
+                      <p className="text-xs mt-2 text-secondary">
+                        {event.participants.length}
+                        {event.maxParticipants && ` / ${event.maxParticipants}`} joined
                       </p>
                     </button>
                   ))}
@@ -374,9 +368,23 @@ export default function MapView() {
               )}
             </div>
           )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
+
+    <CreateEventModal
+      isOpen={isCreateModalOpen}
+      onClose={() => setIsCreateModalOpen(false)}
+    />
+
+    {toasts.map(toast => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => removeToast(toast.id)}
+      />
+    ))}
+  </>
   );
 }

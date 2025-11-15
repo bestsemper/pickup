@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createEvent } from '@/lib/firebase/events';
 import { useAuth } from '@/contexts/AuthContext';
-import { getFriends } from '@/lib/firebase/friends';
 import CloseIcon from './icons/CloseIcon';
 import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
 
@@ -23,14 +22,13 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
     subType: '',
     locationName: '',
     locationAddress: '',
-    startTime: new Date().toISOString().slice(0, 16),
-    endTime: new Date(Date.now() + 60 * 60000).toISOString().slice(0, 16),
+    eventDate: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    startTimeOnly: '14:00', // HH:mm format
+    endTimeOnly: '15:00', // HH:mm format
     maxParticipants: undefined as number | undefined,
     description: '',
     isPrivate: false,
   });
-  const [friends, setFriends] = useState<any[]>([]);
-  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
@@ -128,37 +126,7 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
     };
   }, [isOpen, suggestions]);
 
-  // Load friends when modal opens
-  useEffect(() => {
-    if (!isOpen || !currentUser) {
-      setFriends([]);
-      return;
-    }
 
-    const loadFriends = async () => {
-      try {
-        const friendsList = await getFriends();
-        setFriends(friendsList);
-      } catch (error) {
-        console.error('Error loading friends:', error);
-        setFriends([]);
-      }
-    };
-
-    loadFriends();
-  }, [isOpen, currentUser]);
-
-  const toggleFriendSelection = (friendUid: string) => {
-    setSelectedFriends((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(friendUid)) {
-        updated.delete(friendUid);
-      } else {
-        updated.add(friendUid);
-      }
-      return updated;
-    });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,8 +141,8 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
       }
       const userId = currentUser.uid;
 
-      const startTimeDate = new Date(formData.startTime);
-      const endTimeDate = new Date(formData.endTime);
+      const startTimeDate = new Date(`${formData.eventDate}T${formData.startTimeOnly}:00`);
+      const endTimeDate = new Date(`${formData.eventDate}T${formData.endTimeOnly}:00`);
 
       // Validate that end time is after start time
       if (endTimeDate <= startTimeDate) {
@@ -192,9 +160,6 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
 
       // Calculate duration in minutes
       const durationMinutes = Math.round((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
-
-      // Prepare invited friends list
-      const selectedFriendIds = Array.from(selectedFriends);
 
       await createEvent({
         title: formData.title,
@@ -219,7 +184,6 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
         maxParticipants: formData.maxParticipants,
         description: formData.description,
         isPrivate: formData.isPrivate,
-        invitedFriends: formData.isPrivate ? selectedFriendIds : undefined,
       });
 
       // Notify user of success
@@ -237,13 +201,13 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
         subType: '',
         locationName: '',
         locationAddress: '',
-        startTime: new Date().toISOString().slice(0, 16),
-        endTime: new Date(Date.now() + 60 * 60000).toISOString().slice(0, 16),
+        eventDate: new Date().toISOString().slice(0, 10),
+        startTimeOnly: '14:00',
+        endTimeOnly: '15:00',
         maxParticipants: undefined,
         description: '',
         isPrivate: false,
       });
-      setSelectedFriends(new Set());
 
       onEventCreated?.();
       onClose();
@@ -295,12 +259,21 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Activity Type*</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>Activity Type*</label>
               <select
                 required
                 value={formData.activity}
                 onChange={(e) => setFormData({ ...formData, activity: e.target.value, subType: '' })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--input-text)',
+                  colorScheme: 'light dark',
+                  paddingRight: '2.5rem',
+                  appearance: 'auto',
+                  backgroundImage: 'none'
+                }}
               >
                 <option value="">Select Activity Type</option>
                 {ACTIVITY_TYPES.map(type => (
@@ -312,12 +285,21 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
             {/* Conditional subType field based on activity type */}
             {formData.activity === 'Sports' && (
               <div>
-                <label className="block text-sm font-medium mb-1">Sport Type *</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>Sport Type *</label>
                 <select
                   required
                   value={formData.subType}
                   onChange={(e) => setFormData({ ...formData, subType: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--input-text)',
+                    colorScheme: 'light dark',
+                    paddingRight: '2.5rem',
+                    appearance: 'auto',
+                    backgroundImage: 'none'
+                  }}
                 >
                   <option value="">Select a sport</option>
                   {SPORTS_SUBTYPES.map(sport => (
@@ -362,7 +344,7 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
                 required
                 value={formData.locationName}
                 onChange={(e) => setFormData({ ...formData, locationName: e.target.value })}
-                placeholder="e.g., Slaughter Rec Center"
+                placeholder="e.g., Olsson Hall Room 011"
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
               />
             </div>
@@ -431,28 +413,59 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>
+                Event Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={formData.eventDate}
+                onChange={(e) => setFormData({ ...formData, eventDate: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--input-text)',
+                  colorScheme: 'light dark'
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>
                 Start Time & End Time *
               </label>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium mb-1">Start Time</label>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--foreground)' }}>Start Time</label>
                   <input
-                    type="datetime-local"
+                    type="time"
                     required
-                    value={formData.startTime}
-                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={formData.startTimeOnly}
+                    onChange={(e) => setFormData({ ...formData, startTimeOnly: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--input-text)',
+                      colorScheme: 'light dark'
+                    }}
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-xs font-medium mb-1">End Time</label>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--foreground)' }}>End Time</label>
                   <input
-                    type="datetime-local"
+                    type="time"
                     required
-                    value={formData.endTime}
-                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={formData.endTimeOnly}
+                    onChange={(e) => setFormData({ ...formData, endTimeOnly: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--input-text)',
+                      colorScheme: 'light dark'
+                    }}
                   />
                 </div>
               </div>
@@ -500,9 +513,6 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
                 checked={formData.isPrivate}
                 onChange={(e) => {
                   setFormData({ ...formData, isPrivate: e.target.checked });
-                  if (!e.target.checked) {
-                    setSelectedFriends(new Set());
-                  }
                 }}
                 className="w-4 h-4"
               />
@@ -510,54 +520,6 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreated }: Cr
                 Private Event (Friends Only)
               </label>
             </div>
-
-            {/* Friend Selection */}
-            {formData.isPrivate && (
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--foreground)' }}>
-                  Invite Friends {friends.length === 0 ? '(Add friends first)' : ''}
-                </label>
-                {friends.length === 0 ? (
-                  <p className="text-sm py-4 text-center" style={{ color: 'var(--foreground-secondary)' }}>
-                    No friends to invite. Add friends from your profile menu.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-2 rounded" style={{ backgroundColor: 'var(--background-secondary)' }}>
-                    {friends.map((friend) => (
-                      <div
-                        key={friend.uid}
-                        className="flex items-center gap-2 p-2 rounded"
-                        style={{ backgroundColor: 'var(--card-bg)' }}
-                      >
-                        <input
-                          type="checkbox"
-                          id={`friend-${friend.uid}`}
-                          checked={selectedFriends.has(friend.uid)}
-                          onChange={() => toggleFriendSelection(friend.uid)}
-                          className="w-4 h-4"
-                        />
-                        <label htmlFor={`friend-${friend.uid}`} className="flex-1 flex items-center gap-2 cursor-pointer">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium"
-                            style={{ backgroundColor: 'var(--secondary)' }}
-                          >
-                            {friend.displayName?.[0]?.toUpperCase() || '?'}
-                          </div>
-                          <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                            {friend.displayName}
-                          </span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {formData.isPrivate && (
-              <p className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
-                This event will be visible to all your friends.
-              </p>
-            )}
 
             <button
               type="submit"

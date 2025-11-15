@@ -75,6 +75,33 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
+    
+    // Friends collection - manage friend relationships
+    match /friends/{friendshipId} {
+      allow read: if request.auth != null && 
+                     (request.auth.uid == resource.data.user1Id || 
+                      request.auth.uid == resource.data.user2Id);
+      allow create: if request.auth != null && 
+                       (request.auth.uid == request.resource.data.user1Id || 
+                        request.auth.uid == request.resource.data.user2Id);
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.user1Id || 
+                        request.auth.uid == resource.data.user2Id);
+    }
+    
+    // Friend requests collection
+    match /friendRequests/{requestId} {
+      allow read: if request.auth != null && 
+                     (request.auth.uid == resource.data.fromUserId || 
+                      request.auth.uid == resource.data.toUserId);
+      allow create: if request.auth != null && 
+                       request.auth.uid == request.resource.data.fromUserId;
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.fromUserId || 
+                        request.auth.uid == resource.data.toUserId);
+      allow update: if request.auth != null && 
+                       request.auth.uid == resource.data.toUserId;
+    }
   }
 }
 ```

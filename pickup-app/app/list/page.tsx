@@ -8,16 +8,21 @@ import { ACTIVITY_TYPES, SPORTS_SUBTYPES } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import CreateEventModal from '@/components/CreateEventModal';
+import Toast from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 
 export default function ListView() {
   const { currentUser } = useAuth();
+  const { toasts, showToast, removeToast } = useToast();
   const [events, setEvents] = useState<PickupEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [joiningEvents, setJoiningEvents] = useState<Set<string>>(new Set());
   const [selectedEvent, setSelectedEvent] = useState<PickupEvent | null>(null);
-  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string } }>({});
+  const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } }>({});
   const [joiningEvent, setJoiningEvent] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     loadEvents();
@@ -31,7 +36,7 @@ export default function ListView() {
 
   const loadParticipantProfiles = async (participantIds: string[]) => {
     try {
-      const profiles: { [key: string]: { displayName: string; email: string } } = {};
+      const profiles: { [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean } } = {};
       
       await Promise.all(
         participantIds.map(async (uid) => {
@@ -41,7 +46,8 @@ export default function ListView() {
               const userData = userDoc.data();
               profiles[uid] = {
                 displayName: userData.displayName || 'Anonymous',
-                email: userData.email || ''
+                email: userData.email || '',
+                isNetBadgeVerified: userData.isNetBadgeVerified || false
               };
             }
           }
@@ -88,10 +94,9 @@ export default function ListView() {
 
   const getEventTiming = (event: PickupEvent) => {
     const now = new Date();
-    const startTime = new Date(event.createdAt.toString()); // Use actual start time from event if available
     
-    // Check if event has a startTime field (from new time picker)
-    const eventStartTime = event.createdAt;
+    // Use event.startTime if available, otherwise fallback to createdAt
+    const eventStartTime = event.startTime || event.createdAt;
     const eventEndTime = event.expiresAt;
     
     // Time until event starts
@@ -130,7 +135,7 @@ export default function ListView() {
 
   const handleJoinLeave = async (event: PickupEvent) => {
     if (!currentUser) {
-      alert('Please log in to join events');
+      showToast('Please log in to join events', 'warning');
       return;
     }
 
@@ -143,7 +148,7 @@ export default function ListView() {
       } else {
         // Check if event is full
         if (event.maxParticipants && event.participants.length >= event.maxParticipants) {
-          alert('This event is full');
+          showToast('This event is full', 'warning');
           return;
         }
         await joinEvent(event.id, currentUser.uid);
@@ -153,7 +158,7 @@ export default function ListView() {
       await loadEvents();
     } catch (error) {
       console.error('Error joining/leaving event:', error);
-      alert('Failed to join/leave event. Please try again.');
+      showToast('Failed to join/leave event. Please try again.', 'error');
     } finally {
       setJoiningEvents(prev => {
         const newSet = new Set(prev);
@@ -174,49 +179,56 @@ export default function ListView() {
       // Reload events and close modal
       await loadEvents();
       setSelectedEvent(null);
-      alert('Event deleted successfully');
+      showToast('Event deleted successfully', 'success');
     } catch (error) {
       console.error('Error deleting event:', error);
-      alert('Failed to delete event. Please try again.');
+      showToast('Failed to delete event. Please try again.', 'error');
     }
   };
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--background-secondary)', height: 'calc(100vh - 73px)' }}>
-      {/* Filter */}
-      <div className="max-w-7xl mx-auto px-4 py-6 flex-shrink-0 w-full">
-        <div className="flex items-center gap-4">
-          <label className="font-medium" style={{ color: 'var(--foreground)' }}>Filter:</label>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border"
-            style={{
-              backgroundColor: 'var(--input-bg)',
-              borderColor: 'var(--input-border)',
-              color: 'var(--input-text)'
-            }}
-          >
-            <option value="all">All Events</option>
-            <optgroup label="Activity Types">
-              {ACTIVITY_TYPES.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Sports">
-              {SPORTS_SUBTYPES.map(sport => (
-                <option key={sport} value={sport}>{sport}</option>
-              ))}
-            </optgroup>
-          </select>
-          <span className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
-            {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
-          </span>
+    <>
+      <div className="flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--background-secondary)', height: 'calc(100vh - 73px)' }}>
+        {/* Filter */}
+        <div className="w-full mx-auto px-8 py-6 flex-shrink-0 w-full">
+          <div className="flex items-center gap-4">
+            <label className="font-medium" style={{ color: 'var(--foreground)' }}>Filter:</label>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="px-4 py-2 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--input-bg)',
+                borderColor: 'var(--input-border)',
+                color: 'var(--input-text)'
+              }}
+            >
+              <option value="all">All Events</option>
+              <optgroup label="Activity Types">
+                {ACTIVITY_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Sports">
+                {SPORTS_SUBTYPES.map(sport => (
+                  <option key={sport} value={sport}>{sport}</option>
+                ))}
+              </optgroup>
+            </select>
+            <span className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
+              {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+            </span>
+            <button
+              onClick={() => currentUser ? setIsCreateModalOpen(true) : showToast('Please sign in to create an event', 'warning')}
+              className="ml-auto px-4 py-2 rounded-lg font-medium border border-primary text-primary hover:bg-primary hover:text-white transition"
+            >
+              Create Event
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Events List */}
-      <div className="max-w-7xl mx-auto px-4 pb-8 flex-1 overflow-y-auto custom-scrollbar w-full">
+      <div className="w-full mx-auto px-8 pb-8 flex-1 overflow-y-auto custom-scrollbar">
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--foreground)' }}>Loading events...</div>
         ) : filteredEvents.length === 0 ? (
@@ -249,8 +261,8 @@ export default function ListView() {
                   <p className="text-sm mb-3" style={{ color: 'var(--foreground-tertiary)' }}>{event.location.name}</p>
                   
                   <div className="text-sm" style={{ color: 'var(--foreground-secondary)' }}>
-                    {event.participants.length} participant{event.participants.length !== 1 ? 's' : ''}
-                    {event.maxParticipants && ` / ${event.maxParticipants}`}
+                    {event.participants.length}
+                    {event.maxParticipants && ` / ${event.maxParticipants}`} participant{event.participants.length !== 1 ? 's' : ''}
                   </div>
                 </button>
               </div>
@@ -278,10 +290,13 @@ export default function ListView() {
                 </h2>
                 <button 
                   onClick={() => setSelectedEvent(null)}
-                  className="text-2xl leading-none"
+                  className="hover:opacity-70"
                   style={{ color: 'var(--foreground-secondary)' }}
                 >
-                  ×
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                 </button>
               </div>
 
@@ -292,7 +307,9 @@ export default function ListView() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>Activity</p>
-                  <p className="font-medium" style={{ color: 'var(--foreground)' }}>{selectedEvent.activity}</p>
+                  <p className="font-medium" style={{ color: 'var(--foreground)' }}>
+                    {selectedEvent.subType ? selectedEvent.subType : selectedEvent.activity}
+                  </p>
                 </div>
 
                 <div>
@@ -325,10 +342,10 @@ export default function ListView() {
                             {participantProfiles[uid]?.displayName?.[0]?.toUpperCase() || '?'}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--foreground)' }}>
-                              {participantProfiles[uid]?.displayName || 'Loading...'}
+                            <p className="text-sm font-medium truncate flex items-center gap-1" style={{ color: 'var(--foreground)' }}>
+                              <span>{participantProfiles[uid]?.displayName || 'Loading...'}</span>
                               {uid === selectedEvent.createdBy.uid && (
-                                <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--accent-orange)', color: 'white' }}>
+                                <span className="ml-1 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--accent-orange)', color: 'white' }}>
                                   Host
                                 </span>
                               )}
@@ -401,5 +418,20 @@ export default function ListView() {
         </div>
       )}
     </div>
+
+    <CreateEventModal
+      isOpen={isCreateModalOpen}
+      onClose={() => setIsCreateModalOpen(false)}
+    />
+
+    {toasts.map(toast => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => removeToast(toast.id)}
+      />
+    ))}
+  </>
   );
 }
