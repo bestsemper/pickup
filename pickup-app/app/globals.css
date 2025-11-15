@@ -349,6 +349,7 @@ button:disabled {
 }
 
 /* File input styling for light and dark modes */
+
 input[type="file"] {
   color-scheme: light dark;
 }

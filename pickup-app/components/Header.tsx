@@ -24,10 +24,17 @@ export default function Header() {
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Check initial theme preference
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Check saved theme preference, default to light mode
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    setTheme(savedTheme || (isDark ? 'dark' : 'light'));
+    const initialTheme = savedTheme || 'light';
+    setTheme(initialTheme);
+    
+    // Apply the theme to the document
+    if (initialTheme === 'dark') {
+      document.documentElement.style.colorScheme = 'dark';
+    } else {
+      document.documentElement.style.colorScheme = 'light';
+    }
   }, []);
 
   useEffect(() => {
@@ -79,7 +86,7 @@ export default function Header() {
       <header className="border-b bg-header border-header">
         <div className="w-full px-8 py-4 flex justify-between items-center">
           <Link href="/" className="text-2xl font-bold text-primary flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7" style={{ flexShrink: 0 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-9 h-9" style={{ flexShrink: 0 }}>
               <path d="M7 17L17 7M17 7H8M17 7v9"/>
             </svg>
             Pickup
