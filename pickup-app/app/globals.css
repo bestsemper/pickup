@@ -356,7 +356,7 @@ input[type="file"] {
 
 input[type="file"]::file-selector-button {
   color: #ffffff !important;
-  background-color: var(--primary) !important;
+  background-color: var(--background-secondary) !important;
 }
 
 /* Light mode overrides */

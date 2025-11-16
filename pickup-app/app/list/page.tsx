@@ -11,6 +11,7 @@ import { db } from '@/lib/firebase/config';
 import CreateEventModal from '@/components/CreateEventModal';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
+import { useEventTiming } from '@/hooks/useEventTiming';
 
 export default function ListView() {
   const { currentUser } = useAuth();
@@ -23,6 +24,9 @@ export default function ListView() {
   const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } }>({});
   const [joiningEvent, setJoiningEvent] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  
+  // Use the timing hook for real-time updates
+  const getEventTiming = useEventTiming(events);
 
   useEffect(() => {
     loadEvents();
@@ -80,59 +84,6 @@ export default function ListView() {
         // Check if filter matches activity type or subType
         return event.activity === filter || event.subType === filter;
       });
-
-  const getTimeRemaining = (expiresAt: Date) => {
-    const now = new Date();
-    const diff = expiresAt.getTime() - now.getTime();
-    if (diff <= 0) return 'Expired';
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 0) {
-      return minutes > 0 ? `${hours} hr ${minutes} min left` : `${hours} hr left`;
-    }
-    return `${minutes} min left`;
-  };
-
-  const getEventTiming = (event: PickupEvent) => {
-    const now = new Date();
-    
-    // Use event.startTime if available, otherwise fallback to createdAt
-    const eventStartTime = event.startTime || event.createdAt;
-    const eventEndTime = event.expiresAt;
-    
-    // Time until event starts
-    const timeUntilStart = eventStartTime.getTime() - now.getTime();
-    // Time remaining in event
-    const timeRemaining = eventEndTime.getTime() - now.getTime();
-
-    if (timeRemaining <= 0) {
-      return 'Expired';
-    }
-
-    if (timeUntilStart > 0) {
-      // Event hasn't started yet
-      const hoursUntil = Math.floor(timeUntilStart / (1000 * 60 * 60));
-      const minutesUntil = Math.floor((timeUntilStart % (1000 * 60 * 60)) / (1000 * 60));
-      
-      let startsIn = '';
-      if (hoursUntil > 0) {
-        startsIn = minutesUntil > 0 ? `${hoursUntil}h ${minutesUntil}m` : `${hoursUntil}h`;
-      } else {
-        startsIn = `${minutesUntil}m`;
-      }
-      
-      return `Starts in ${startsIn}`;
-    } else {
-      // Event has started, show time remaining
-      const hoursLeft = Math.floor(timeRemaining / (1000 * 60 * 60));
-      const minutesLeft = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
-      
-      if (hoursLeft > 0) {
-        return minutesLeft > 0 ? `${hoursLeft}h ${minutesLeft}m left` : `${hoursLeft}h left`;
-      }
-      return `${minutesLeft}m left`;
-    }
-  };
 
   const handleJoinLeave = async (event: PickupEvent) => {
     if (!currentUser) {

@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase/config';
 import CreateEventModal from '@/components/CreateEventModal';
 import Toast from '@/components/Toast';
 import { useToast } from '@/hooks/useToast';
+import { useEventTiming } from '@/hooks/useEventTiming';
 import CloseIcon from '@/components/icons/CloseIcon';
 
 export default function MapView() {
@@ -26,6 +27,9 @@ export default function MapView() {
   const [participantProfiles, setParticipantProfiles] = useState<{ [key: string]: { displayName: string; email: string; isNetBadgeVerified?: boolean; photoURL?: string } }>({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const { toasts, showToast, removeToast } = useToast();
+  
+  // Use the timing hook for real-time updates
+  const getEventTiming = useEventTiming(events);
 
   useEffect(() => {
     // Hide sidebar by default on mobile devices
@@ -89,18 +93,6 @@ export default function MapView() {
         // Check if filter matches activity type or subType
         return event.activity === filter || event.subType === filter;
       });
-
-  const getTimeRemaining = (expiresAt: Date) => {
-    const now = new Date();
-    const diff = expiresAt.getTime() - now.getTime();
-    if (diff <= 0) return 'Expired';
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 0) {
-      return minutes > 0 ? `${hours} hr ${minutes} min left` : `${hours} hr left`;
-    }
-    return `${minutes} min left`;
-  };
 
   const handleJoinLeave = async (event: PickupEvent) => {
     if (!currentUser) {
@@ -253,7 +245,7 @@ export default function MapView() {
             
             <h2 className="text-2xl font-bold mb-2 text-foreground">{selectedEvent.title}</h2>
             <p className="font-medium mb-4 text-accent-orange">
-              {getTimeRemaining(selectedEvent.expiresAt)}
+              {getEventTiming(selectedEvent)}
             </p>
             
             <div className="space-y-3">
@@ -373,7 +365,7 @@ export default function MapView() {
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-medium text-foreground">{event.title}</p>
                         <span className="text-xs text-accent-orange">
-                          {getTimeRemaining(event.expiresAt)}
+                          {getEventTiming(event)}
                         </span>
                       </div>
                       <p className="text-sm mb-1 text-secondary">
