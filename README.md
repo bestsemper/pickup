@@ -1,33 +1,38 @@
 # Pickup - Find Spontaneous Games & Activities
 
-A Next.js + Firebase app for creating and joining spontaneous pickup games, activities, and club events happening right now near you.
+A Next.js + Firebase app for the UVA community to create and join spontaneous pickup games, activities, and club events happening right now near you.
+
+**Live Site:** https://claudehackspickup.web.app/
 
 ## The Problem
 
-You want to play a quick game of pickup basketball, ultimate frisbee, or even a board game, but you can't find a group right now. The app will also include club activities (e.g., different UVA clubs) that are going on.
+You want to play a quick game of pickup basketball, ultimate frisbee, or even a board game, but you can't find a group right now. The app also helps UVA clubs organize and share activities that are going on.
 
 ## The Solution
 
-An extremely simple, "one-hour-only" event app where:
-- Users create ephemeral posts (e.g., "Pickup Basketball @ Slaughter Rec Center")
-- Posts are only active for 60 minutes (or custom duration)
-- After expiration, they're automatically removed
-- Other users see active games/activities near them and tap "I'm in"
+An extremely simple, ephemeral event app where:
+- Users create time-limited posts (e.g., "Pickup Basketball @ Slaughter Rec Center")
+- Posts expire after their set duration
+- Other users see active games/activities near them and tap "Join"
+- Real-time updates keep everyone in sync
 
 ## Features
 
-- **Two Views**: Map view and List view with activity filters
-- **Real-time Updates**: See active events happening right now
-- **Ephemeral Events**: Posts automatically expire after set duration
-- **Firebase Backend**: Firestore for data, Authentication for users
-- **NetBadge Authentication**: UVA students can sign in with NetBadge and receive a verification badge
-- **Responsive Design**: Works on mobile and desktop
+- Create and join time-limited events with Google Maps location
+- Interactive map view with event clustering
+- Friend system with private event visibility
+- Dark mode theme with persistence
+- Real-time event updates
+- Email/password authentication
+- User profiles with customizable display name and photo
 
 ## Tech Stack
 
-- **Frontend**: Next.js 16 with TypeScript and Tailwind CSS
-- **Backend**: Firebase (Firestore, Authentication, Cloud Functions)
-- **Maps**: Google Maps or Mapbox (to be integrated)
+- **Frontend**: Next.js 15 with TypeScript and Tailwind CSS v4
+- **Backend**: Firebase (Firestore, Authentication)
+- **Maps**: Google Maps API with Places Autocomplete
+- **Styling**: CSS Custom Properties for theming
+- **Icons**: Custom SVG icon components
 
 ## Getting Started
 
@@ -35,6 +40,7 @@ An extremely simple, "one-hour-only" event app where:
 
 - Node.js 18+ installed
 - Firebase account (free tier is sufficient)
+- Google Maps API key
 - npm or yarn
 
 ### Installation
@@ -49,75 +55,57 @@ cd pickup-app
 npm install
 ```
 
-3. Set up Firebase:
-   - Create a Firebase project at https://console.firebase.google.com/
-   - Enable Firestore Database and Authentication
-   - Copy your Firebase configuration to `.env.local` (see `.env.local` for template)
-   - See `pickup-app/SETUP.md` for detailed Firebase setup instructions
+3. Set up environment variables:
+   Create a `.env.local` file in the `pickup-app` directory:
+   ```env
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_auth_domain
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_key
+   ```
 
-4. Run the development server:
+4. Set up Firebase:
+   - Create a Firebase project at https://console.firebase.google.com/
+   - Enable Firestore Database and Authentication (Email/Password)
+   - Create the following Firestore collections: `events`, `users`, `friends`, `friendRequests`
+   - Set up Firestore indexes for queries (will be prompted when needed)
+
+5. Run the development server:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Project Structure
+### Deployment
 
-```
-pickup/
-├── README.md                       # This file
-├── QUICKSTART.md                   # Quick overview
-└── pickup-app/                     # Main application directory
-    ├── app/                        # Next.js app directory
-    │   ├── page.tsx               # Home page
-    │   ├── map/page.tsx           # Map view
-    │   └── list/page.tsx          # List view
-    ├── lib/firebase/              # Firebase configuration
-    │   ├── config.ts              # Client-side Firebase
-    │   ├── admin.ts               # Server-side Firebase Admin
-    │   └── events.ts              # Event CRUD operations
-    ├── components/                # React components
-    ├── types/                     # TypeScript type definitions
-    ├── SETUP.md                   # Detailed setup instructions
-    └── CHECKLIST.md               # Implementation checklist
+The app is deployed on Firebase Hosting:
+```bash
+npm run build
+firebase deploy --only hosting
 ```
 
-## Documentation
+## Usage
 
-- **SETUP.md** - Detailed Firebase configuration and setup instructions
-- **QUICKSTART.md** - Quick start guide and feature overview
-- **CHECKLIST.md** - Development checklist and feature roadmap
-
-## Development Roadmap
-
-### Completed
-- Next.js project structure with TypeScript
-- Firebase client and admin SDK integration
-- Home, Map, and List view pages
-- Activity type filters
-- Event CRUD operations
-- Create event modal component
-
-### In Progress
-- Firebase configuration
-- User authentication
-- Map integration (Google Maps/Mapbox)
-- Real-time event updates
-
-### Planned
-- Join/leave event functionality
-- User profiles
-- Push notifications
-- Club activities integration
-- Event auto-expiration via Cloud Functions
+- Click "Create Event" to post a new activity with location and time
+- Browse events on map or list view, filter by activity type
+- Click "Join" to participate in events
+- Manage friends through user menu to create private events
+- Toggle dark mode in Settings
 
 ## Contributing
 
-This is a hackathon project. For questions or contributions, please reach out to the team.
+This is a hackathon project built for finding spontaneous activities and games. Contributions, suggestions, and feedback are welcome!
+
+## Team
+
+- **John Kim**
+- **Michael Chung**
+- **Rohan Batra**
 
 ## License
 
-This project is for educational and hackathon purposes.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is built for the UVA community and open for contributions.
